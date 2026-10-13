@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # BloodConnect — Real-Time Blood Bank Management & Traceability System
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-68a063?logo=node.js)](https://nodejs.org/)
@@ -364,3 +365,6 @@ This system was developed as a final-year academic engineering project:
 - **Project Title**: BloodConnect — Real-Time Blood Bank Management & Traceability System
 - **Core Domain**: Healthcare Information Systems, Supply Chain Traceability, Real-Time WebSockets
 - **License**: MIT
+=======
+# BloodConnect
+>>>>>>> a61935dc3895f013fa3066355f4376541f6ee44b
