@@ -33,7 +33,7 @@ router.put(
 router.put(
     "/:id/eligibility",
     protect,
-    authorize("staff","admin"),
+    authorize("staff"),
     updateEligibility
 );
 router.get(
@@ -45,7 +45,7 @@ router.get(
 router.post(
     "/register-by-staff",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     registerDonorByStaff
 );
 

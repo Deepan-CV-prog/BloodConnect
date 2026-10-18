@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
-const DonationAppointments = () => {
+const DonationAppointments = ({ userRole }) => {
+  const isStaff = userRole === 'staff';
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,8 +69,13 @@ const DonationAppointments = () => {
 
   return (
     <div className="dashboard-card glass-panel animate-fade-in">
-      <div className="card-header">
+      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3>Donation Appointments</h3>
+        {!isStaff && (
+          <span style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', fontWeight: '500' }}>
+            Admin Oversight Mode (Read-Only)
+          </span>
+        )}
       </div>
       {actionError && <div style={{ padding: '12px', margin: '16px 20px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '6px' }}>{actionError}</div>}
       <div className="table-responsive mt-4">
@@ -82,13 +88,13 @@ const DonationAppointments = () => {
               <th>Preferred Date & Time</th>
               <th>Status</th>
               <th>Remarks</th>
-              <th>Actions</th>
+              {isStaff && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {appointments.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+                <td colSpan={isStaff ? 7 : 6} style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
                   No appointment requests found.
                 </td>
               </tr>
@@ -134,49 +140,51 @@ const DonationAppointments = () => {
                   <td style={{ color: '#64748b', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {appt.remarks || '-'}
                   </td>
-                  <td>
-                    {appt.status === 'pending' ? (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="btn-primary"
-                          style={{ padding: '6px 12px', fontSize: '12px' }}
-                          disabled={actionLoading === appt._id}
-                          onClick={() => handleUpdateStatus(appt._id, 'approved')}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: '12px', color: '#dc2626', borderColor: '#fca5a5', backgroundColor: '#fef2f2' }}
-                          disabled={actionLoading === appt._id}
-                          onClick={() => handleUpdateStatus(appt._id, 'rejected')}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    ) : appt.status === 'approved' ? (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="btn-primary"
-                          style={{ padding: '6px 12px', fontSize: '12px', backgroundColor: '#16a34a' }}
-                          disabled={actionLoading === appt._id}
-                          onClick={() => handleUpdateStatus(appt._id, 'completed')}
-                        >
-                          Complete
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: '12px' }}
-                          disabled={actionLoading === appt._id}
-                          onClick={() => handleUpdateStatus(appt._id, 'cancelled')}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#64748b', fontSize: '13px' }}>No actions</span>
-                    )}
-                  </td>
+                  {isStaff && (
+                    <td>
+                      {appt.status === 'pending' ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            disabled={actionLoading === appt._id}
+                            onClick={() => handleUpdateStatus(appt._id, 'approved')}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '12px', color: '#dc2626', borderColor: '#fca5a5', backgroundColor: '#fef2f2' }}
+                            disabled={actionLoading === appt._id}
+                            onClick={() => handleUpdateStatus(appt._id, 'rejected')}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : appt.status === 'approved' ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '12px', backgroundColor: '#16a34a' }}
+                            disabled={actionLoading === appt._id}
+                            onClick={() => handleUpdateStatus(appt._id, 'completed')}
+                          >
+                            Complete
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            disabled={actionLoading === appt._id}
+                            onClick={() => handleUpdateStatus(appt._id, 'cancelled')}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#64748b', fontSize: '13px' }}>No actions</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))
             )}

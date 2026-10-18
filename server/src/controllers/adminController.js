@@ -8,6 +8,7 @@ const DonationAppointment = require("../models/DonationAppointment");
 const Allocation = require("../models/Allocation");
 const Issuance = require("../models/Issuance");
 const Traceability = require("../models/Traceability");
+const { evaluateDonorEligibility } = require("../utils/donorEligibility");
 
 /**
  * GET /api/admin/overview
@@ -15,12 +16,12 @@ const Traceability = require("../models/Traceability");
  */
 const getAdminOverview = async (req, res) => {
     try {
+        const now = new Date();
         const [
             totalUsers,
             roleStats,
             userStatusStats,
-            totalDonors,
-            donorEligibilityStats,
+            allDonors,
             totalBloodUnits,
             availableBloodUnits,
             testingUnits,
@@ -52,15 +53,16 @@ const getAdminOverview = async (req, res) => {
                 { $group: { _id: "$status", count: { $sum: 1 } } }
             ]),
 
-            // Donor counts
-            Donor.countDocuments(),
-            Donor.aggregate([
-                { $group: { _id: "$eligibilityStatus", count: { $sum: 1 } } }
-            ]),
+            // All donors for single-source-of-truth dynamic eligibility evaluation
+            Donor.find(),
 
-            // Blood unit counts
+            // Blood unit counts (strictly unexpired for available)
             BloodUnit.countDocuments(),
-            BloodUnit.countDocuments({ inventoryStatus: "available", testingStatus: "approved" }),
+            BloodUnit.countDocuments({
+                inventoryStatus: "available",
+                testingStatus: "approved",
+                expiryDate: { $gt: now }
+            }),
             BloodUnit.countDocuments({ testingStatus: "pending" }),
             BloodUnit.aggregate([
                 { $group: { _id: "$testingStatus", count: { $sum: 1 } } }
@@ -69,7 +71,13 @@ const getAdminOverview = async (req, res) => {
                 { $group: { _id: "$inventoryStatus", count: { $sum: 1 } } }
             ]),
             BloodUnit.aggregate([
-                { $match: { inventoryStatus: "available", testingStatus: "approved" } },
+                {
+                    $match: {
+                        inventoryStatus: "available",
+                        testingStatus: "approved",
+                        expiryDate: { $gt: now }
+                    }
+                },
                 { $group: { _id: "$bloodGroup", count: { $sum: 1 } } }
             ]),
             BloodUnit.aggregate([
@@ -140,11 +148,17 @@ const getAdminOverview = async (req, res) => {
             if (s._id) userStatuses[s._id] = s.count;
         });
 
-        // Format donor eligibility
+        // Format donor eligibility using single source of truth (accounting for completed donations and 3-month deferral rule)
         const donorEligibility = { eligible: 0, ineligible: 0, pending: 0 };
-        donorEligibilityStats.forEach(e => {
-            if (e._id) donorEligibility[e._id] = e.count;
-        });
+        for (const donor of allDonors) {
+            const evalResult = await evaluateDonorEligibility(donor);
+            const status = evalResult.eligibilityStatus || "pending";
+            if (donorEligibility.hasOwnProperty(status)) {
+                donorEligibility[status]++;
+            } else {
+                donorEligibility[status] = 1;
+            }
+        }
 
         // Format standard blood groups
         const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -220,7 +234,7 @@ const getAdminOverview = async (req, res) => {
                     status: userStatuses
                 },
                 donors: {
-                    total: totalDonors,
+                    total: allDonors.length,
                     eligibility: donorEligibility
                 },
                 bloodUnits: {

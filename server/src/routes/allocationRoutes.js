@@ -33,16 +33,16 @@ router.get(
 router.put(
     "/:id/cancel",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     cancelAllocation
 );
 
 
-// Staff/Admin allocates a blood unit
+// Staff allocates a blood unit
 router.post(
     "/",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     createAllocation
 );
 

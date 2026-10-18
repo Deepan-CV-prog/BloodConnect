@@ -9,7 +9,10 @@ import {
   ShieldCheck,
   Activity,
   RefreshCw,
-  Package
+  Package,
+  Eye,
+  FileText,
+  X
 } from 'lucide-react';
 
 const AdminDashboard = ({ onNavigate }) => {
@@ -18,6 +21,7 @@ const AdminDashboard = ({ onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [activeActivityTab, setActiveActivityTab] = useState('requests');
+  const [selectedTraceabilityRecord, setSelectedTraceabilityRecord] = useState(null);
 
   const fetchOverview = async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -598,8 +602,45 @@ const AdminDashboard = ({ onNavigate }) => {
                       <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                         {formatDateTime(t.performedAt)}
                       </td>
-                      <td style={{ fontSize: '13px', color: 'var(--text-muted)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.remarks || '—'}
+                      <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            title={t.remarks ? t.remarks : 'No remarks'}
+                            style={{
+                              maxWidth: '180px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: 'inline-block'
+                            }}
+                          >
+                            {t.remarks || '—'}
+                          </span>
+                          {t.remarks && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTraceabilityRecord(t)}
+                              style={{
+                                background: 'none',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                padding: '2px 6px',
+                                fontSize: '11px',
+                                color: '#2563eb',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title="Inspect full remarks and record details"
+                            >
+                              <Eye size={12} />
+                              <span>View</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -609,6 +650,145 @@ const AdminDashboard = ({ onNavigate }) => {
           </div>
         )}
       </div>
+
+      {/* Full Remarks & Traceability Record Details Modal */}
+      {selectedTraceabilityRecord && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1200,
+            padding: '16px'
+          }}
+          onClick={() => setSelectedTraceabilityRecord(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '560px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              padding: '28px',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <FileText size={20} color="#2563eb" />
+                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#0f172a', margin: 0 }}>
+                    Operational Record & Audit Remarks
+                  </h3>
+                </div>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
+                  Full unclipped remarks and transaction metadata for this blood unit.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTraceabilityRecord(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  padding: '4px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Unit ID</span>
+                <p style={{ margin: '2px 0 0', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
+                  {selectedTraceabilityRecord.bloodUnitId?.unitId || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Blood Group</span>
+                <p style={{ margin: '2px 0 0' }}>
+                  <span className="blood-pill-small">{selectedTraceabilityRecord.bloodUnitId?.bloodGroup || 'N/A'}</span>
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Action</span>
+                <p style={{ margin: '2px 0 0', textTransform: 'capitalize', fontWeight: '500', color: '#1e293b' }}>
+                  {selectedTraceabilityRecord.action ? selectedTraceabilityRecord.action.replace(/_/g, ' ') : 'N/A'}
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Performed By</span>
+                <p style={{ margin: '2px 0 0', fontWeight: '500', color: '#1e293b' }}>
+                  {selectedTraceabilityRecord.performedBy?.name || 'Staff'}
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Location</span>
+                <p style={{ margin: '2px 0 0', color: '#334155' }}>
+                  {selectedTraceabilityRecord.location || 'Blood Bank'}
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Date & Time</span>
+                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#334155' }}>
+                  {formatDateTime(selectedTraceabilityRecord.performedAt)}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <span style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>
+                Full Remarks
+              </span>
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '12px 14px',
+                  fontSize: '13.5px',
+                  lineHeight: '1.5',
+                  color: '#0f172a',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: '200px',
+                  overflowY: 'auto'
+                }}
+              >
+                {selectedTraceabilityRecord.remarks || 'No remarks recorded for this transaction.'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setSelectedTraceabilityRecord(null)}
+                style={{ padding: '8px 20px', fontSize: '13px' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

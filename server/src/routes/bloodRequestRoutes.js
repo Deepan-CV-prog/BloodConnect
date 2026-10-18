@@ -49,11 +49,11 @@ router.get(
 );
 
 
-// Staff/Admin updates request status
+// Staff updates request status
 router.put(
     "/:id/status",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     updateBloodRequestStatus
 );
 

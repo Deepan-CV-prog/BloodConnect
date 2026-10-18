@@ -20,13 +20,13 @@ router.get(
 router.post(
     "/",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     createDonation
 );
 router.put(
     "/:id/status",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     updateDonationStatus
 );
 router.get(

@@ -21,7 +21,7 @@ router.get(
 router.post(
     "/send",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     sendEmergencyAlerts
 );
 

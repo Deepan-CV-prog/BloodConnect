@@ -36,7 +36,7 @@ router.get(
 router.put(
     "/:id/status",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     updateAppointmentStatus
 );
 

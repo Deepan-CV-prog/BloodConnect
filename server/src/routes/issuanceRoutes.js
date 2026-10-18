@@ -12,11 +12,11 @@ const {
 } = require("../controllers/issuanceController");
 
 
-// Staff/Admin issues an allocated blood unit
+// Staff issues an allocated blood unit
 router.post(
     "/",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     createIssuance
 );
 

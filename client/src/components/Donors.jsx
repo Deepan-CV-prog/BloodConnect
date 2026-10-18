@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { API_BASE_URL } from '../config';
 import { createPortal } from 'react-dom';
 
-const Donors = ({ donors, loading, onRefresh }) => {
+const Donors = ({ donors, loading, onRefresh, userRole }) => {
+  const isStaff = userRole === 'staff';
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '', email: '', password: '', phone: '', bloodGroup: '', dateOfBirth: '', gender: '', address: ''
@@ -88,7 +89,13 @@ const Donors = ({ donors, loading, onRefresh }) => {
           <h2 className="section-title">Registered Donors</h2>
           <p className="section-desc">Directory of all registered blood donors.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>Register Donor</button>
+        {isStaff ? (
+          <button className="btn-primary" onClick={() => setShowModal(true)}>Register Donor</button>
+        ) : (
+          <span style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', fontWeight: '500' }}>
+            Admin Oversight Mode (Read-Only)
+          </span>
+        )}
       </div>
 
       {actionError && <div style={{ padding: '12px', margin: '0 20px 16px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '6px' }}>{actionError}</div>}
@@ -138,17 +145,19 @@ const Donors = ({ donors, loading, onRefresh }) => {
                             Next: {new Date(donor.nextEligibleDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                           </span>
                         )}
-                      <select
-                        className="form-input"
-                        style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', width: 'auto', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', cursor: actionLoading === donor._id ? 'not-allowed' : 'pointer' }}
-                        value={donor.eligibilityStatus || 'pending'}
-                        onChange={(e) => handleEligibilityChange(donor._id, e.target.value)}
-                        disabled={actionLoading === donor._id}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="eligible">Eligible</option>
-                        <option value="ineligible">Ineligible</option>
-                      </select>
+                      {isStaff && (
+                        <select
+                          className="form-input"
+                          style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', width: 'auto', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', cursor: actionLoading === donor._id ? 'not-allowed' : 'pointer' }}
+                          value={donor.eligibilityStatus || 'pending'}
+                          onChange={(e) => handleEligibilityChange(donor._id, e.target.value)}
+                          disabled={actionLoading === donor._id}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="eligible">Eligible</option>
+                          <option value="ineligible">Ineligible</option>
+                        </select>
+                      )}
                     </div>
                   </td>
                   <td>

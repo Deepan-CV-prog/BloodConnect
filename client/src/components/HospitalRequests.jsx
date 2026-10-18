@@ -16,7 +16,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-const HospitalRequests = ({ requests, loading, onRefresh }) => {
+const HospitalRequests = ({ requests, loading, onRefresh, userRole }) => {
+  const isStaff = userRole === 'staff';
   const [updatingId, setUpdatingId] = useState(null);
   const [allocationCounts, setAllocationCounts] = useState({});
   const [inventoryStock, setInventoryStock] = useState({});
@@ -417,6 +418,11 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
           <h2 className="section-title">Hospital Requests</h2>
           <p className="section-desc">Manage inbound blood requests, evaluate shortages, and broadcast emergency donor alerts.</p>
         </div>
+        {!isStaff && (
+          <span style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', fontWeight: '500' }}>
+            Admin Oversight Mode (Read-Only)
+          </span>
+        )}
       </div>
 
       {statusFeedback && (
@@ -451,7 +457,7 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {statusFeedback.showAllocateAction && statusFeedback.request && (
+            {statusFeedback.showAllocateAction && statusFeedback.request && isStaff && (
               <button
                 onClick={() => {
                   handleOpenAllocate(statusFeedback.request);
@@ -504,13 +510,13 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
               <th>Priority</th>
               <th>Request Date</th>
               <th>Status</th>
-              <th>Action</th>
+              {isStaff && <th>Action</th>}
             </tr>
           </thead>
           <tbody>
             {requests.length === 0 ? (
               <tr>
-                <td colSpan="7" className="empty-state">No hospital requests currently.</td>
+                <td colSpan={isStaff ? 7 : 6} className="empty-state">No hospital requests currently.</td>
               </tr>
             ) : (
               requests.map((request) => {
@@ -564,97 +570,99 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
                         {request.status?.replace('_', ' ') || 'Pending'}
                       </span>
                     </td>
-                    <td style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <select
-                        className="status-dropdown"
-                        value={request.status}
-                        onChange={(e) => handleStatusChange(request._id, e.target.value)}
-                        disabled={updatingId === request._id || ['allocated', 'partially_allocated', 'processing', 'completed'].includes(request.status)}
-                        style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        {['allocated', 'partially_allocated', 'processing', 'completed'].includes(request.status) && (
-                          <option value={request.status}>
-                            {request.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                          </option>
+                    {isStaff && (
+                      <td style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select
+                          className="status-dropdown"
+                          value={request.status}
+                          onChange={(e) => handleStatusChange(request._id, e.target.value)}
+                          disabled={updatingId === request._id || ['allocated', 'partially_allocated', 'processing', 'completed'].includes(request.status)}
+                          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          {['allocated', 'partially_allocated', 'processing', 'completed'].includes(request.status) && (
+                            <option value={request.status}>
+                              {request.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            </option>
+                          )}
+                          <option value="rejected">Rejected</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+
+                        {['pending', 'approved', 'partially_allocated'].includes(request.status) && (
+                          <button
+                            onClick={() => handleOpenAlertModal(request)}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              backgroundColor: isEmergency ? '#dc2626' : '#d97706',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Check inventory shortages and alert eligible donors"
+                          >
+                            <Bell size={13} />
+                            <span>Find Donors</span>
+                          </button>
                         )}
-                        <option value="rejected">Rejected</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
 
-                      {['pending', 'approved', 'partially_allocated'].includes(request.status) && (
-                        <button
-                          onClick={() => handleOpenAlertModal(request)}
-                          style={{
-                            padding: '4px 8px',
-                            fontSize: '12px',
-                            backgroundColor: isEmergency ? '#dc2626' : '#d97706',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title="Check inventory shortages and alert eligible donors"
-                        >
-                          <Bell size={13} />
-                          <span>Find Donors</span>
-                        </button>
-                      )}
+                        {(request.status === 'approved' || request.status === 'partially_allocated') && (
+                          <button
+                            onClick={() => handleOpenAllocate(request)}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              backgroundColor: '#2563eb',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: '0 1px 2px 0 rgba(37, 99, 235, 0.2)'
+                            }}
+                            title="Allocate blood units from inventory"
+                          >
+                            <PackageCheck size={14} />
+                            <span>Allocate</span>
+                          </button>
+                        )}
 
-                      {(request.status === 'approved' || request.status === 'partially_allocated') && (
-                        <button
-                          onClick={() => handleOpenAllocate(request)}
-                          style={{
-                            padding: '4px 10px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            backgroundColor: '#2563eb',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            boxShadow: '0 1px 2px 0 rgba(37, 99, 235, 0.2)'
-                          }}
-                          title="Allocate blood units from inventory"
-                        >
-                          <PackageCheck size={14} />
-                          <span>Allocate</span>
-                        </button>
-                      )}
-
-                      {(
-                        request.status === 'allocated' ||
-                        (['partially_allocated', 'processing'].includes(request.status) && reqCounts.allocated > 0)
-                      ) && (
-                        <button
-                          onClick={() => handleOpenIssue(request)}
-                          style={{
-                            padding: '4px 10px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            backgroundColor: '#10b981',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title="Issue allocated units"
-                        >
-                          <ArrowRight size={14} />
-                          <span>Issue Units ({reqCounts.allocated})</span>
-                        </button>
-                      )}
-                    </td>
+                        {(
+                          request.status === 'allocated' ||
+                          (['partially_allocated', 'processing'].includes(request.status) && reqCounts.allocated > 0)
+                        ) && (
+                          <button
+                            onClick={() => handleOpenIssue(request)}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              backgroundColor: '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Issue allocated units"
+                          >
+                            <ArrowRight size={14} />
+                            <span>Issue Units ({reqCounts.allocated})</span>
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })

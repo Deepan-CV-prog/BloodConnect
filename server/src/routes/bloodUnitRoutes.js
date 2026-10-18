@@ -15,13 +15,13 @@ const router = express.Router();
 router.post(
     "/",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     createBloodUnit
 );
 router.put(
     "/:id/testing",
     protect,
-    authorize("staff", "admin"),
+    authorize("staff"),
     updateTestingStatus
 );
 router.get("/inventory", protect, authorize("staff", "admin"), getInventory);

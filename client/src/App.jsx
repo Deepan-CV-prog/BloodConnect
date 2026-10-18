@@ -234,11 +234,11 @@ function App() {
       switch (activeTab) {
         case "dashboard": return <AdminDashboard onNavigate={(tab) => setActiveTab(tab)} />;
         case "users": return <UserManagement />;
-        case "inventory": return <BloodInventory bloodGroups={bloodGroups} loading={isLoading} />;
-        case "requests": return <HospitalRequests requests={hospitalRequests} loading={isLoading} onRefresh={fetchHospitalRequests} />;
-        case "donors": return <Donors donors={donors} loading={isLoading} />;
-        case "donations": return <Donations donations={donations} loading={isLoading} />;
-        case "appointments": return <DonationAppointments />;
+        case "inventory": return <BloodInventory bloodGroups={bloodGroups} loading={isLoading} userRole={userRole} />;
+        case "requests": return <HospitalRequests requests={hospitalRequests} loading={isLoading} onRefresh={fetchHospitalRequests} userRole={userRole} />;
+        case "donors": return <Donors donors={donors} loading={isLoading} onRefresh={fetchDonors} userRole={userRole} />;
+        case "donations": return <Donations donations={donations} loading={isLoading} onRefresh={fetchDonations} userRole={userRole} />;
+        case "appointments": return <DonationAppointments userRole={userRole} />;
         case "traceability": return <Traceability />;
         case "settings": return <Settings onLogout={handleLogout} />;
         default: return <AdminDashboard onNavigate={(tab) => setActiveTab(tab)} />;
@@ -246,11 +246,11 @@ function App() {
     } else {
       switch (activeTab) {
         case "dashboard": return <DashboardOverview bloodGroups={bloodGroups} donors={donors} hospitalRequests={hospitalRequests} />;
-        case "inventory": return <BloodInventory bloodGroups={bloodGroups} loading={isLoading} />;
-        case "requests": return <HospitalRequests requests={hospitalRequests} loading={isLoading} onRefresh={fetchHospitalRequests} />;
-        case "donors": return <Donors donors={donors} loading={isLoading} />;
-        case "donations": return <Donations donations={donations} loading={isLoading} />;
-        case "appointments": return <DonationAppointments />;
+        case "inventory": return <BloodInventory bloodGroups={bloodGroups} loading={isLoading} userRole={userRole} />;
+        case "requests": return <HospitalRequests requests={hospitalRequests} loading={isLoading} onRefresh={fetchHospitalRequests} userRole={userRole} />;
+        case "donors": return <Donors donors={donors} loading={isLoading} onRefresh={fetchDonors} userRole={userRole} />;
+        case "donations": return <Donations donations={donations} loading={isLoading} onRefresh={fetchDonations} userRole={userRole} />;
+        case "appointments": return <DonationAppointments userRole={userRole} />;
         case "traceability": return <Traceability />;
         case "settings": return <Settings onLogout={handleLogout} />;
         default: return <DashboardOverview bloodGroups={bloodGroups} donors={donors} hospitalRequests={hospitalRequests} />;

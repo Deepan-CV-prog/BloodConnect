@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 import { createPortal } from 'react-dom';
 
-const Donations = ({ donations, loading, onRefresh }) => {
+const Donations = ({ donations, loading, onRefresh, userRole }) => {
+  const isStaff = userRole === 'staff';
   const [showModal, setShowModal] = useState(false);
   const [donorsList, setDonorsList] = useState([]);
   const [formData, setFormData] = useState({
@@ -84,7 +85,13 @@ const Donations = ({ donations, loading, onRefresh }) => {
           <h2 className="section-title">Donation Records</h2>
           <p className="section-desc">Recent blood donation activities and drives.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>Record Donation</button>
+        {isStaff ? (
+          <button className="btn-primary" onClick={() => setShowModal(true)}>Record Donation</button>
+        ) : (
+          <span style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', fontWeight: '500' }}>
+            Admin Oversight Mode (Read-Only)
+          </span>
+        )}
       </div>
 
       <div className="table-responsive">
