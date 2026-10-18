@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, MapPin, User, Clock, AlertCircle } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 const Traceability = () => {
   const [searchTerm, setSearchTerm] = useState('');
