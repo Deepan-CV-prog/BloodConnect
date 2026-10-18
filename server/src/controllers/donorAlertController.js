@@ -4,23 +4,7 @@ const Donor = require("../models/Donor");
 const BloodUnit = require("../models/BloodUnit");
 const Hospital = require("../models/Hospital");
 const User = require("../models/User");
-
-// Helper to determine if a donor is currently in their 3-month deferral window
-const checkDonorDeferral = (donor) => {
-    if (!donor.lastDonationDate) {
-        return { isDeferred: false, nextEligibleDate: null };
-    }
-
-    const nextDate = new Date(donor.lastDonationDate);
-    nextDate.setMonth(nextDate.getMonth() + 3);
-
-    const now = new Date();
-    if (now < nextDate) {
-        return { isDeferred: true, nextEligibleDate: nextDate };
-    }
-
-    return { isDeferred: false, nextEligibleDate: nextDate };
-};
+const { evaluateDonorEligibility, formatEligibleDate } = require("../utils/donorEligibility");
 
 // Staff / Admin: Find eligible donors for a hospital blood request
 const findMatchingDonors = async (req, res) => {
@@ -55,8 +39,8 @@ const findMatchingDonors = async (req, res) => {
 
         for (const donor of donors) {
             const isUserActive = donor.userId && donor.userId.status !== "inactive";
-            const isMarkedEligible = donor.eligibilityStatus === "eligible";
-            const { isDeferred, nextEligibleDate } = checkDonorDeferral(donor);
+            const evalResult = await evaluateDonorEligibility(donor);
+            const isEligible = isUserActive && evalResult.isEligible;
 
             const existingAlert = alertMap.get(donor._id.toString());
             const donorInfo = {
@@ -65,8 +49,11 @@ const findMatchingDonors = async (req, res) => {
                 email: donor.userId ? donor.userId.email : "",
                 phone: donor.phone || (donor.userId ? donor.userId.phone : ""),
                 bloodGroup: donor.bloodGroup,
-                eligibilityStatus: donor.eligibilityStatus,
-                lastDonationDate: donor.lastDonationDate,
+                eligibilityStatus: evalResult.eligibilityStatus,
+                lastDonationDate: evalResult.lastDonationDate,
+                nextEligibleDate: evalResult.nextEligibleDate,
+                formattedNextEligibleDate: evalResult.formattedNextEligibleDate,
+                isDeferred: evalResult.isDeferred,
                 totalDonations: donor.totalDonations,
                 alreadyAlerted: !!existingAlert,
                 alertStatus: existingAlert ? existingAlert.status : null,
@@ -75,20 +62,16 @@ const findMatchingDonors = async (req, res) => {
                 responseNote: existingAlert ? existingAlert.responseNote : ""
             };
 
-            if (isUserActive && isMarkedEligible && !isDeferred) {
+            if (isEligible) {
                 matchingEligibleDonors.push(donorInfo);
             } else {
                 let reason = "Ineligible";
-                if (!isUserActive) reason = "Account inactive";
-                else if (isDeferred) {
-                    const formattedDate = nextEligibleDate.toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric"
-                    });
-                    reason = `In 3-month deferral period until ${formattedDate}`;
-                } else if (!isMarkedEligible) {
-                    reason = `Status is ${donor.eligibilityStatus}`;
+                if (!isUserActive) {
+                    reason = "Account inactive";
+                } else if (evalResult.isDeferred) {
+                    reason = evalResult.deferralReason || `In 3-month deferral period until ${evalResult.formattedNextEligibleDate}`;
+                } else if (evalResult.eligibilityStatus !== "eligible") {
+                    reason = `Status is ${evalResult.eligibilityStatus}`;
                 }
 
                 excludedDonors.push({
@@ -164,12 +147,21 @@ const sendEmergencyAlerts = async (req, res) => {
         const donors = await Donor.find(query).populate("userId", "name email phone status");
 
         // Filter strictly for eligible, non-deferred donors
-        const eligibleDonors = donors.filter((d) => {
-            const isUserActive = d.userId && d.userId.status !== "inactive";
-            const isMarkedEligible = d.eligibilityStatus === "eligible";
-            const { isDeferred } = checkDonorDeferral(d);
-            return isUserActive && isMarkedEligible && !isDeferred;
-        });
+        // Filter strictly for eligible, non-deferred donors using single source of truth
+        const evaluatedDonors = await Promise.all(
+            donors.map(async (d) => {
+                const isUserActive = d.userId && d.userId.status !== "inactive";
+                const evalResult = await evaluateDonorEligibility(d);
+                return {
+                    donor: d,
+                    isEligible: isUserActive && evalResult.isEligible
+                };
+            })
+        );
+
+        const eligibleDonors = evaluatedDonors
+            .filter((item) => item.isEligible)
+            .map((item) => item.donor);
 
         if (eligibleDonors.length === 0) {
             return res.status(400).json({
@@ -266,7 +258,19 @@ const getMyAlerts = async (req, res) => {
             })
             .sort({ sentAt: -1 });
 
-        res.status(200).json({ alerts });
+        const evalResult = await evaluateDonorEligibility(donor);
+
+        res.status(200).json({
+            alerts,
+            donorEligibility: {
+                isEligible: evalResult.isEligible,
+                isDeferred: evalResult.isDeferred,
+                eligibilityStatus: evalResult.eligibilityStatus,
+                nextEligibleDate: evalResult.nextEligibleDate,
+                formattedNextEligibleDate: evalResult.formattedNextEligibleDate,
+                deferralReason: evalResult.deferralReason
+            }
+        });
 
     } catch (error) {
         console.error("Get donor alerts error:", error.message);

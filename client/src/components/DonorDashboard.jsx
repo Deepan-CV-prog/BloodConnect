@@ -56,6 +56,9 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
       if (res.ok) {
         const data = await res.json();
         setEmergencyAlerts(data.alerts || []);
+        if (data.donorEligibility?.nextEligibleDate) {
+          setNextEligibleDate(data.donorEligibility.nextEligibleDate);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch donor emergency alerts:", e);
@@ -228,6 +231,12 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
 
   // Render the Emergency Blood Requests & Alerts section
   const renderEmergencyAlertsSection = () => {
+    const isDonorIneligible = donorProfile?.eligibilityStatus === 'ineligible' ||
+      (nextEligibleDate && new Date() < new Date(nextEligibleDate));
+    const formattedNextDate = nextEligibleDate
+      ? new Date(nextEligibleDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : null;
+
     const pendingCount = emergencyAlerts.filter(a => a.status === 'sent').length;
 
     return (
@@ -346,74 +355,119 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
                   {/* Donor Response Controls */}
                   <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                     {isPending ? (
-                      <>
-                        <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '500' }}>
-                          Are you available to donate blood for this critical need?
+                      isDonorIneligible ? (
+                        <div style={{
+                          padding: '10px 14px',
+                          backgroundColor: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%'
+                        }}>
+                          <AlertTriangle size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                          <span>
+                            Alert no longer actionable: You are currently deferred until <strong>{formattedNextDate}</strong>.
+                          </span>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={() => handleRespondAlert(alert._id, 'available')}
-                            disabled={respondingAlertId === alert._id}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              backgroundColor: '#16a34a',
-                              color: 'white',
-                              border: 'none',
-                              fontSize: '13px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <Check size={14} />
-                            <span>{respondingAlertId === alert._id ? 'Saving...' : 'I Am Available'}</span>
-                          </button>
-                          <button
-                            onClick={() => handleRespondAlert(alert._id, 'unavailable')}
-                            disabled={respondingAlertId === alert._id}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              backgroundColor: '#f1f5f9',
-                              color: '#64748b',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '13px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <X size={14} />
-                            <span>Unavailable</span>
-                          </button>
-                        </div>
-                      </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '500' }}>
+                            Are you available to donate blood for this critical need?
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => handleRespondAlert(alert._id, 'available')}
+                              disabled={respondingAlertId === alert._id}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '6px',
+                                backgroundColor: '#16a34a',
+                                color: 'white',
+                                border: 'none',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <Check size={14} />
+                              <span>{respondingAlertId === alert._id ? 'Saving...' : 'I Am Available'}</span>
+                            </button>
+                            <button
+                              onClick={() => handleRespondAlert(alert._id, 'unavailable')}
+                              disabled={respondingAlertId === alert._id}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '6px',
+                                backgroundColor: '#f1f5f9',
+                                color: '#64748b',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <X size={14} />
+                              <span>Unavailable</span>
+                            </button>
+                          </div>
+                        </>
+                      )
                     ) : isAvailable ? (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '500' }}>
-                          <CheckCircle size={16} />
-                          <span>You confirmed: <strong>Available to Donate</strong> on {formatDateTime(alert.respondedAt)}.</span>
-                        </div>
-                        <button
-                          onClick={() => setActiveTab('schedule')}
-                          className="btn-primary"
-                          style={{
-                            padding: '6px 14px',
-                            fontSize: '12px',
-                            display: 'inline-flex',
+                      isDonorIneligible ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '500' }}>
+                            <CheckCircle size={16} />
+                            <span>You confirmed: <strong>Available to Donate</strong> on {formatDateTime(alert.respondedAt)}.</span>
+                          </div>
+                          <div style={{
+                            padding: '10px 14px',
+                            backgroundColor: '#fffbeb',
+                            border: '1px solid #fef3c7',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            color: '#92400e',
+                            display: 'flex',
                             alignItems: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          <Calendar size={13} />
-                          <span>Schedule Donation Appointment</span>
-                          <ArrowRight size={13} />
-                        </button>
-                      </>
+                            gap: '8px'
+                          }}>
+                            <AlertTriangle size={16} color="#d97706" style={{ flexShrink: 0 }} />
+                            <span>
+                              Donation scheduling is currently unavailable because you are in a 3-month deferral period. You will be eligible on <strong>{formattedNextDate}</strong>.
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '500' }}>
+                            <CheckCircle size={16} />
+                            <span>You confirmed: <strong>Available to Donate</strong> on {formatDateTime(alert.respondedAt)}.</span>
+                          </div>
+                          <button
+                            onClick={() => setActiveTab('schedule')}
+                            className="btn-primary"
+                            style={{
+                              padding: '6px 14px',
+                              fontSize: '12px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Calendar size={13} />
+                            <span>Schedule Donation Appointment</span>
+                            <ArrowRight size={13} />
+                          </button>
+                        </>
+                      )
                     ) : isUnavailable ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px' }}>
                         <XCircle size={16} color="#94a3b8" />
@@ -485,30 +539,78 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
               </div>
             </div>
 
-            <div className="stat-card glass-panel">
-              <div className="stat-icon-wrapper request-theme"><CalendarClock size={24} /></div>
-              <div className="stat-details">
-                <p className="stat-label">Upcoming Donation</p>
-                {(() => {
-                  const upcomingAppt = donorAppointments
-                    .filter(a => ["pending", "approved"].includes(a.status?.toLowerCase()))
-                    .sort((a, b) => new Date(a.preferredDate) - new Date(b.preferredDate))[0];
-                  return upcomingAppt ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <h3 className="stat-value" style={{ fontSize: "1rem" }}>
-                        {new Date(upcomingAppt.preferredDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<br/>
-                        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>{upcomingAppt.preferredTime}</span>
-                      </h3>
-                      <span className={`status-badge status-${upcomingAppt.status.toLowerCase()}`} style={{ fontSize: "10px", padding: "2px 6px", alignSelf: "flex-start" }}>
-                        {upcomingAppt.status}
-                      </span>
-                    </div>
-                  ) : (
-                    <h3 className="stat-value" style={{ fontSize: "1rem", color: "#64748b" }}>No upcoming donation</h3>
-                  );
-                })()}
-              </div>
-            </div>
+            {(() => {
+              const upcomingAppt = donorAppointments
+                .filter(a => ["pending", "approved"].includes(a.status?.toLowerCase()))
+                .sort((a, b) => new Date(a.preferredDate) - new Date(b.preferredDate))[0];
+
+              const isConflicting = upcomingAppt && (
+                upcomingAppt.isConflicting ||
+                (nextEligibleDate && new Date(upcomingAppt.preferredDate) < new Date(nextEligibleDate))
+              );
+
+              const nextEligibleStr = nextEligibleDate
+                ? new Date(nextEligibleDate).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" })
+                : "";
+
+              return (
+                <div className="stat-card glass-panel" style={{ borderLeft: isConflicting ? '3px solid #f59e0b' : undefined }}>
+                  <div
+                    className="stat-icon-wrapper"
+                    style={{
+                      backgroundColor: isConflicting ? '#fef3c7' : undefined,
+                      color: isConflicting ? '#d97706' : undefined
+                    }}
+                  >
+                    {isConflicting ? <AlertTriangle size={24} /> : <CalendarClock size={24} />}
+                  </div>
+                  <div className="stat-details">
+                    <p className="stat-label">Upcoming Donation</p>
+                    {isConflicting ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span style={{
+                            fontSize: "11px",
+                            fontWeight: "700",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            backgroundColor: "#fef3c7",
+                            color: "#b45309",
+                            border: "1px solid #fcd34d",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}>
+                            <AlertTriangle size={12} /> Appointment requires staff review
+                          </span>
+                        </div>
+                        <h3 className="stat-value" style={{ fontSize: "0.95rem", marginTop: "2px" }}>
+                          {new Date(upcomingAppt.preferredDate).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" })}<br/>
+                          <span style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: "normal" }}>
+                            {upcomingAppt.preferredTime} • Status: {upcomingAppt.status}
+                          </span>
+                        </h3>
+                        <p style={{ fontSize: "11px", color: "#b45309", lineHeight: "1.3" }}>
+                          This appointment falls within your deferral period{nextEligibleStr ? ` (eligible after ${nextEligibleStr})` : ""}. Please contact the blood bank.
+                        </p>
+                      </div>
+                    ) : upcomingAppt ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <h3 className="stat-value" style={{ fontSize: "1rem" }}>
+                          {new Date(upcomingAppt.preferredDate).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" })}<br/>
+                          <span style={{ fontSize: "0.85rem", color: "#64748b" }}>{upcomingAppt.preferredTime}</span>
+                        </h3>
+                        <span className={`status-badge status-${upcomingAppt.status.toLowerCase()}`} style={{ fontSize: "10px", padding: "2px 6px", alignSelf: "flex-start" }}>
+                          {upcomingAppt.status}
+                        </span>
+                      </div>
+                    ) : (
+                      <h3 className="stat-value" style={{ fontSize: "1rem", color: "#64748b" }}>No upcoming donation</h3>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         </>
       ) : (
@@ -622,6 +724,26 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
         <h3>Schedule a Donation</h3>
       </div>
 
+      {nextEligibleDate && new Date() < new Date(nextEligibleDate) && (
+        <div style={{
+          padding: '12px 16px',
+          backgroundColor: '#fffbeb',
+          border: '1px solid #fef3c7',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          color: '#92400e',
+          fontSize: '13px'
+        }}>
+          <AlertTriangle size={18} color="#d97706" style={{ flexShrink: 0 }} />
+          <div>
+            <strong>Notice:</strong> You are currently in a 3-month deferral period. You will be eligible to donate on or after <strong>{new Date(nextEligibleDate).toLocaleDateString('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })}</strong>.
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleScheduleSubmit} style={{ maxWidth: '600px', marginBottom: '40px' }}>
         {scheduleError && <div style={{ padding: '12px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '6px', marginBottom: '16px' }}>{scheduleError}</div>}
         {scheduleSuccess && <div style={{ padding: '12px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '6px', marginBottom: '16px' }}>{scheduleSuccess}</div>}
@@ -633,7 +755,11 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
               type="date"
               className="form-input"
               required
-              min={new Date().toISOString().split('T')[0]}
+              min={
+                nextEligibleDate && new Date() < new Date(nextEligibleDate)
+                  ? new Date(nextEligibleDate).toISOString().split('T')[0]
+                  : new Date().toISOString().split('T')[0]
+              }
               value={scheduleForm.preferredDate}
               onChange={e => setScheduleForm({...scheduleForm, preferredDate: e.target.value})}
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
@@ -708,21 +834,41 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
               </tr>
             </thead>
             <tbody>
-              {donorAppointments.map(appt => (
-                <tr key={appt._id}>
-                  <td style={{ fontWeight: '600', color: '#0f172a' }}>{appt.appointmentId}</td>
-                  <td>{new Date(appt.preferredDate).toLocaleDateString('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                  <td>{appt.preferredTime}</td>
-                  <td>
-                    <span className={`status-badge status-${appt.status}`}>
-                      {appt.status}
-                    </span>
-                  </td>
-                  <td style={{ color: '#64748b', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {appt.remarks || '-'}
-                  </td>
-                </tr>
-              ))}
+              {donorAppointments.map(appt => {
+                const isConflicting = appt.isConflicting ||
+                  (nextEligibleDate && ["pending", "approved"].includes(appt.status?.toLowerCase()) && new Date(appt.preferredDate) < new Date(nextEligibleDate));
+
+                return (
+                  <tr key={appt._id}>
+                    <td style={{ fontWeight: '600', color: '#0f172a' }}>{appt.appointmentId}</td>
+                    <td>{new Date(appt.preferredDate).toLocaleDateString('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                    <td>{appt.preferredTime}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                        <span className={`status-badge status-${appt.status}`}>
+                          {appt.status}
+                        </span>
+                        {isConflicting && (
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: '600',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#fef3c7',
+                            color: '#b45309',
+                            border: '1px solid #fcd34d'
+                          }}>
+                            ⚠️ Requires Staff Review
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ color: '#64748b', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {appt.remarks || '-'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

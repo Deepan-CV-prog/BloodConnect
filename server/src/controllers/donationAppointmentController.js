@@ -1,5 +1,6 @@
 const DonationAppointment = require("../models/DonationAppointment");
 const Donor = require("../models/Donor");
+const { evaluateDonorEligibility, formatEligibleDate } = require("../utils/donorEligibility");
 
 const createAppointment = async (req, res) => {
     try {
@@ -18,21 +19,15 @@ const createAppointment = async (req, res) => {
             });
         }
 
-        if (donor.lastDonationDate) {
-            const lastDonation = new Date(donor.lastDonationDate);
-            const nextEligibleDate = new Date(lastDonation);
-            nextEligibleDate.setMonth(nextEligibleDate.getMonth() + 3);
+        // Verify current eligibility against actual completed donation records
+        const evalResult = await evaluateDonorEligibility(donor);
 
+        if (evalResult.nextEligibleDate) {
             const attemptDate = new Date(preferredDate);
-
-            if (attemptDate < nextEligibleDate) {
-                const formattedDate = nextEligibleDate.toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric"
-                });
+            if (attemptDate < evalResult.nextEligibleDate) {
                 return res.status(400).json({
-                    message: `Donor is temporarily ineligible. The next donation can be scheduled after ${formattedDate}.`
+                    message: `Donor is temporarily ineligible. The next donation can be scheduled after ${evalResult.formattedNextEligibleDate}.`,
+                    nextEligibleDate: evalResult.nextEligibleDate
                 });
             }
         }
@@ -67,27 +62,32 @@ const getMyAppointments = async (req, res) => {
             });
         }
 
-        if (donor.lastDonationDate) {
-            const lastDonation = new Date(donor.lastDonationDate);
-            const nextEligibleDate = new Date(lastDonation);
-            nextEligibleDate.setMonth(nextEligibleDate.getMonth() + 3);
-
-            const attemptDate = new Date(preferredDate);
-
-            if (attemptDate < nextEligibleDate) {
-                const formattedDate = nextEligibleDate.toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric"
-                });
-                return res.status(400).json({
-                    message: `Donor is temporarily ineligible. The next donation can be scheduled after ${formattedDate}.`
-                });
-            }
-        }
-
-        const appointments = await DonationAppointment.find({ donorId: donor._id })
+        const appointmentsRaw = await DonationAppointment.find({ donorId: donor._id })
             .sort({ createdAt: -1 });
+
+        const evalResult = await evaluateDonorEligibility(donor);
+
+        const appointments = appointmentsRaw.map(appt => {
+            const apptObj = appt.toObject();
+            let isConflicting = false;
+            let conflictReason = null;
+
+            if (
+                evalResult.nextEligibleDate &&
+                ["pending", "approved"].includes(apptObj.status) &&
+                new Date(apptObj.preferredDate) < evalResult.nextEligibleDate
+            ) {
+                isConflicting = true;
+                conflictReason = `Appointment falls within 3-month deferral period (eligible after ${evalResult.formattedNextEligibleDate})`;
+            }
+
+            return {
+                ...apptObj,
+                isConflicting,
+                conflictReason,
+                nextEligibleDate: evalResult.nextEligibleDate
+            };
+        });
 
         res.status(200).json({
             message: "Appointments fetched successfully",
@@ -105,7 +105,7 @@ const getMyAppointments = async (req, res) => {
 
 const getAllAppointments = async (req, res) => {
     try {
-        const appointments = await DonationAppointment.find()
+        const appointmentsRaw = await DonationAppointment.find()
             .populate({
                 path: "donorId",
                 populate: {
@@ -115,6 +115,40 @@ const getAllAppointments = async (req, res) => {
             })
             .populate("reviewedBy", "name")
             .sort({ createdAt: -1 });
+
+        // Annotate conflicting appointments without altering status in DB
+        const appointments = await Promise.all(
+            appointmentsRaw.map(async (appt) => {
+                const apptObj = appt.toObject();
+                let isConflicting = false;
+                let conflictReason = null;
+                let nextEligibleDate = null;
+                let formattedNextEligibleDate = "";
+
+                if (appt.donorId) {
+                    const evalResult = await evaluateDonorEligibility(appt.donorId);
+                    nextEligibleDate = evalResult.nextEligibleDate;
+                    formattedNextEligibleDate = evalResult.formattedNextEligibleDate;
+
+                    if (
+                        evalResult.nextEligibleDate &&
+                        ["pending", "approved"].includes(apptObj.status) &&
+                        new Date(apptObj.preferredDate) < evalResult.nextEligibleDate
+                    ) {
+                        isConflicting = true;
+                        conflictReason = `Requires staff review: Donor in 3-month deferral period until ${formattedNextEligibleDate}`;
+                    }
+                }
+
+                return {
+                    ...apptObj,
+                    isConflicting,
+                    conflictReason,
+                    nextEligibleDate,
+                    formattedNextEligibleDate
+                };
+            })
+        );
 
         res.status(200).json({
             message: "Appointments fetched successfully",
@@ -146,6 +180,22 @@ const updateAppointmentStatus = async (req, res) => {
             return res.status(404).json({
                 message: "Appointment not found"
             });
+        }
+
+        // Verify eligibility before approving an appointment
+        if (status === "approved") {
+            const donor = await Donor.findById(appointment.donorId);
+            if (donor) {
+                const evalResult = await evaluateDonorEligibility(donor);
+                if (
+                    evalResult.nextEligibleDate &&
+                    new Date(appointment.preferredDate) < evalResult.nextEligibleDate
+                ) {
+                    return res.status(400).json({
+                        message: `Cannot approve appointment: Donor is in a 3-month deferral period until ${evalResult.formattedNextEligibleDate}.`
+                    });
+                }
+            }
         }
 
         appointment.status = status;

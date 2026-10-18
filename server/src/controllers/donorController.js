@@ -1,6 +1,7 @@
 const Donor = require("../models/Donor");
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
+const { evaluateDonorEligibility, formatEligibleDate } = require("../utils/donorEligibility");
 
 const createDonor = async (req, res) => {
     try {
@@ -70,21 +71,18 @@ const getDonorProfile = async (req, res) => {
         }
 
         const donorObj = donor.toObject();
-        let nextEligibleDate = null;
+        const evalResult = await evaluateDonorEligibility(donor);
 
-        if (donorObj.lastDonationDate) {
-            const nextDate = new Date(donorObj.lastDonationDate);
-            nextDate.setMonth(nextDate.getMonth() + 3);
-
-            if (new Date() < nextDate) {
-                donorObj.eligibilityStatus = "ineligible";
-                nextEligibleDate = nextDate;
-            }
+        donorObj.eligibilityStatus = evalResult.eligibilityStatus;
+        if (evalResult.lastDonationDate) {
+            donorObj.lastDonationDate = evalResult.lastDonationDate;
         }
+        donorObj.nextEligibleDate = evalResult.nextEligibleDate;
+        donorObj.isDeferred = evalResult.isDeferred;
 
         res.status(200).json({
             donor: donorObj,
-            nextEligibleDate
+            nextEligibleDate: evalResult.nextEligibleDate
         });
 
     } catch (error) {
@@ -180,27 +178,28 @@ const updateEligibility = async (req, res) => {
             });
         }
 
+        const evalResult = await evaluateDonorEligibility(donor);
         let finalStatus = eligibilityStatus;
-        let nextEligibleDate = null;
 
-        if (donor.lastDonationDate) {
-            const nextDate = new Date(donor.lastDonationDate);
-            nextDate.setMonth(nextDate.getMonth() + 3);
-
-            if (new Date() < nextDate) {
-                finalStatus = "ineligible";
-                nextEligibleDate = nextDate;
-            }
+        if (evalResult.isDeferred) {
+            finalStatus = "ineligible";
         }
 
         donor.eligibilityStatus = finalStatus;
+        if (evalResult.lastDonationDate) {
+            donor.lastDonationDate = evalResult.lastDonationDate;
+        }
         await donor.save();
 
         const donorObj = donor.toObject();
-        donorObj.nextEligibleDate = nextEligibleDate;
+        donorObj.eligibilityStatus = finalStatus;
+        donorObj.nextEligibleDate = evalResult.nextEligibleDate;
+        donorObj.isDeferred = evalResult.isDeferred;
+
+        const formattedDate = evalResult.formattedNextEligibleDate;
 
         res.status(200).json({
-            message: finalStatus === "ineligible" && eligibilityStatus === "eligible" ? `Donor is currently ineligible. Next eligible date: ${new Date(nextEligibleDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}.` : `Donor marked as ${finalStatus}.`,
+            message: evalResult.isDeferred && eligibilityStatus === "eligible" ? `Donor is currently ineligible. Next eligible date: ${formattedDate}.` : `Donor marked as ${finalStatus}.`,
             donor: donorObj,
             actualStatus: finalStatus
         });
@@ -219,19 +218,17 @@ const getAllDonors = async (req, res) => {
             .populate("userId", "name email phone role")
             .sort({ createdAt: -1 });
 
-        const donors = donorsRaw.map(donor => {
+        const donors = await Promise.all(donorsRaw.map(async (donor) => {
             const donorObj = donor.toObject();
-            if (donorObj.lastDonationDate) {
-                const nextDate = new Date(donorObj.lastDonationDate);
-                nextDate.setMonth(nextDate.getMonth() + 3);
-
-                if (new Date() < nextDate) {
-                    donorObj.eligibilityStatus = "ineligible";
-                    donorObj.nextEligibleDate = nextDate;
-                }
+            const evalResult = await evaluateDonorEligibility(donor);
+            donorObj.eligibilityStatus = evalResult.eligibilityStatus;
+            if (evalResult.lastDonationDate) {
+                donorObj.lastDonationDate = evalResult.lastDonationDate;
             }
+            donorObj.nextEligibleDate = evalResult.nextEligibleDate;
+            donorObj.isDeferred = evalResult.isDeferred;
             return donorObj;
-        });
+        }));
 
         res.status(200).json({
             message: "Donors fetched successfully",

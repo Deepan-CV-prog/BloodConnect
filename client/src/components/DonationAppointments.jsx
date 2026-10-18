@@ -106,9 +106,30 @@ const DonationAppointments = () => {
                     <small style={{ color: '#64748b' }}>{appt.preferredTime}</small>
                   </td>
                   <td>
-                    <span className={`status-badge status-${appt.status}`}>
-                      {appt.status}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                      <span className={`status-badge status-${appt.status}`}>
+                        {appt.status}
+                      </span>
+                      {appt.isConflicting && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#fef3c7',
+                            color: '#b45309',
+                            border: '1px solid #fcd34d',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title={appt.conflictReason || "Conflicting with deferral window"}
+                        >
+                          ⚠️ Requires Staff Review
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ color: '#64748b', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {appt.remarks || '-'}
