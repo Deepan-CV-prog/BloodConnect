@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../config';
-import { Heart, ShieldCheck, ShieldAlert, Calendar, CalendarClock } from "lucide-react";
+import { API_BASE_URL, SOCKET_URL } from '../config';
+import { io } from 'socket.io-client';
+import {
+  Heart,
+  ShieldCheck,
+  ShieldAlert,
+  Calendar,
+  CalendarClock,
+  Bell,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  Hospital,
+  ArrowRight,
+  Check,
+  X
+} from "lucide-react";
 
 const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -13,6 +29,12 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Emergency Donor Alerts State
+  const [emergencyAlerts, setEmergencyAlerts] = useState([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [respondingAlertId, setRespondingAlertId] = useState(null);
+  const [alertFeedback, setAlertFeedback] = useState({});
+
   const [scheduleForm, setScheduleForm] = useState({ preferredDate: '', preferredTime: '', remarks: '' });
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState('');
@@ -21,6 +43,26 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  const fetchMyAlerts = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const res = await fetch(`${API_BASE_URL}/api/donor-alerts/my-alerts`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setEmergencyAlerts(data.alerts || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch donor emergency alerts:", e);
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -55,6 +97,10 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
         } else {
           setDonorAppointments([]);
         }
+
+        // Fetch emergency alerts
+        await fetchMyAlerts();
+
       } catch (err) {
         console.error("Failed to fetch donor data:", err);
         setError("Could not load donor data. Please try again later.");
@@ -66,6 +112,14 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
     };
 
     fetchData();
+
+    // Socket.IO real-time alert updates
+    const socket = io(SOCKET_URL);
+    socket.on("emergencyAlertCreated", () => {
+      fetchMyAlerts();
+    });
+
+    return () => socket.disconnect();
   }, []);
 
   if (loading) {
@@ -75,6 +129,46 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
   if (error) {
     return <div style={{ padding: '20px', color: '#b91c1c' }}>{error}</div>;
   }
+
+  const handleRespondAlert = async (alertId, responseStatus) => {
+    setRespondingAlertId(alertId);
+    setAlertFeedback(prev => ({ ...prev, [alertId]: { error: '', success: '' } }));
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/donor-alerts/${alertId}/respond`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ response: responseStatus })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setAlertFeedback(prev => ({
+          ...prev,
+          [alertId]: { success: `Response recorded: Marked as ${responseStatus}.`, error: '' }
+        }));
+        setEmergencyAlerts(prev =>
+          prev.map(a => a._id === alertId ? { ...a, status: responseStatus, respondedAt: new Date().toISOString() } : a)
+        );
+      } else {
+        setAlertFeedback(prev => ({
+          ...prev,
+          [alertId]: { error: data.message || 'Failed to submit response', success: '' }
+        }));
+      }
+    } catch (e) {
+      setAlertFeedback(prev => ({
+        ...prev,
+        [alertId]: { error: 'Network error submitting response', success: '' }
+      }));
+    } finally {
+      setRespondingAlertId(null);
+    }
+  };
 
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
@@ -119,6 +213,223 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
     }
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' +
+      date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  // Render the Emergency Blood Requests & Alerts section
+  const renderEmergencyAlertsSection = () => {
+    const pendingCount = emergencyAlerts.filter(a => a.status === 'sent').length;
+
+    return (
+      <div className="dashboard-card glass-panel animate-fade-in mt-4" style={{ borderLeft: pendingCount > 0 ? '4px solid #dc2626' : '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ padding: '8px', backgroundColor: pendingCount > 0 ? '#fee2e2' : '#f1f5f9', color: pendingCount > 0 ? '#dc2626' : '#64748b', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Bell size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#0f172a' }}>Emergency Blood Requests</h3>
+              <p style={{ fontSize: '13px', color: '#64748b' }}>Urgent recruitment alerts matching your blood group ({donorProfile?.bloodGroup || 'registered'}).</p>
+            </div>
+          </div>
+
+          {pendingCount > 0 && (
+            <span style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', backgroundColor: '#fee2e2', color: '#b91c1c' }}>
+              {pendingCount} Urgent Action Required
+            </span>
+          )}
+        </div>
+
+        {alertsLoading ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+            Checking for emergency recruitment broadcasts...
+          </div>
+        ) : emergencyAlerts.length === 0 ? (
+          <div style={{ padding: '32px 16px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+            <ShieldCheck size={36} style={{ margin: '0 auto 8px auto', color: '#16a34a' }} />
+            <h4 style={{ color: '#0f172a', marginBottom: '4px' }}>No Active Emergency Alerts</h4>
+            <p style={{ color: '#64748b', fontSize: '13px', maxWidth: '520px', margin: '0 auto' }}>
+              There are currently no urgent blood bank requests requiring your blood group. When hospitals face critical shortages, official broadcast notifications will appear here.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {emergencyAlerts.map((alert) => {
+              const req = alert.requestId || {};
+              const hospital = req.hospitalId || {};
+              const isPending = alert.status === 'sent';
+              const isAvailable = alert.status === 'available';
+              const isUnavailable = alert.status === 'unavailable';
+              const feedback = alertFeedback[alert._id];
+
+              return (
+                <div
+                  key={alert._id}
+                  style={{
+                    padding: '16px 18px',
+                    borderRadius: '8px',
+                    border: isPending ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                    backgroundColor: isPending ? '#fff5f5' : '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        backgroundColor: alert.urgency === 'emergency' ? '#dc2626' : '#d97706',
+                        color: 'white'
+                      }}>
+                        {alert.urgency === 'emergency' ? '🚨 EMERGENCY' : 'URGENT'}
+                      </span>
+                      <span className="blood-pill-small" style={{ fontSize: '13px', fontWeight: '700' }}>
+                        {alert.bloodGroup} Needed
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>
+                        • {req.quantity || 1} Unit(s)
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>
+                      Alert Received: {formatDateTime(alert.sentAt)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '13px', color: '#334155' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Hospital size={15} color="#dc2626" />
+                      <span><strong>Hospital:</strong> {hospital.name || "Regional Hospital"}</span>
+                    </div>
+                    {hospital.address && (
+                      <div style={{ color: '#64748b' }}>
+                        <span><strong>Location:</strong> {hospital.address}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span><strong>Required By:</strong> {formatDate(req.requiredDate)}</span>
+                    </div>
+                    <div>
+                      <span><strong>Request Status:</strong> <span style={{ textTransform: 'capitalize' }}>{req.status || 'Active'}</span></span>
+                    </div>
+                  </div>
+
+                  {feedback?.error && (
+                    <div style={{ padding: '8px 12px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '4px', fontSize: '12px' }}>
+                      {feedback.error}
+                    </div>
+                  )}
+
+                  {feedback?.success && (
+                    <div style={{ padding: '8px 12px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '4px', fontSize: '12px' }}>
+                      {feedback.success}
+                    </div>
+                  )}
+
+                  {/* Donor Response Controls */}
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    {isPending ? (
+                      <>
+                        <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '500' }}>
+                          Are you available to donate blood for this critical need?
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => handleRespondAlert(alert._id, 'available')}
+                            disabled={respondingAlertId === alert._id}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '6px',
+                              backgroundColor: '#16a34a',
+                              color: 'white',
+                              border: 'none',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Check size={14} />
+                            <span>{respondingAlertId === alert._id ? 'Saving...' : 'I Am Available'}</span>
+                          </button>
+                          <button
+                            onClick={() => handleRespondAlert(alert._id, 'unavailable')}
+                            disabled={respondingAlertId === alert._id}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#64748b',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <X size={14} />
+                            <span>Unavailable</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : isAvailable ? (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '500' }}>
+                          <CheckCircle size={16} />
+                          <span>You confirmed: <strong>Available to Donate</strong> on {formatDateTime(alert.respondedAt)}.</span>
+                        </div>
+                        <button
+                          onClick={() => setActiveTab('schedule')}
+                          className="btn-primary"
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '12px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Calendar size={13} />
+                          <span>Schedule Donation Appointment</span>
+                          <ArrowRight size={13} />
+                        </button>
+                      </>
+                    ) : isUnavailable ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px' }}>
+                        <XCircle size={16} color="#94a3b8" />
+                        <span>You responded as unavailable on {formatDateTime(alert.respondedAt)}.</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderDashboard = () => (
     <div className="dashboard-overview animate-fade-in">
       <section className="welcome-banner">
@@ -129,9 +440,12 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
         <div className="welcome-graphic">🩸</div>
       </section>
 
+      {/* Emergency Alerts Section */}
+      {renderEmergencyAlertsSection()}
+
       {donorProfile ? (
         <>
-          <section className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <section className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: '24px' }}>
             <div className="stat-card glass-panel">
               <div className="stat-icon-wrapper blood-theme">
                 <span className="stat-icon">❤️</span>
@@ -173,27 +487,27 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
 
             <div className="stat-card glass-panel">
               <div className="stat-icon-wrapper request-theme"><CalendarClock size={24} /></div>
-                <div className="stat-details">
-                  <p className="stat-label">Upcoming Donation</p>
-                  {(() => {
-                    const upcomingAppt = donorAppointments
-                      .filter(a => ["pending", "approved"].includes(a.status?.toLowerCase()))
-                      .sort((a, b) => new Date(a.preferredDate) - new Date(b.preferredDate))[0];
-                    return upcomingAppt ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <h3 className="stat-value" style={{ fontSize: "1rem" }}>
-                          {new Date(upcomingAppt.preferredDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<br/>
-                          <span style={{ fontSize: "0.85rem", color: "#64748b" }}>{upcomingAppt.preferredTime}</span>
-                        </h3>
-                        <span className={`status-badge status-${upcomingAppt.status.toLowerCase()}`} style={{ fontSize: "10px", padding: "2px 6px", alignSelf: "flex-start" }}>
-                          {upcomingAppt.status}
-                        </span>
-                      </div>
-                    ) : (
-                      <h3 className="stat-value" style={{ fontSize: "1rem", color: "#64748b" }}>No upcoming donation</h3>
-                    );
-                  })()}
-                </div>
+              <div className="stat-details">
+                <p className="stat-label">Upcoming Donation</p>
+                {(() => {
+                  const upcomingAppt = donorAppointments
+                    .filter(a => ["pending", "approved"].includes(a.status?.toLowerCase()))
+                    .sort((a, b) => new Date(a.preferredDate) - new Date(b.preferredDate))[0];
+                  return upcomingAppt ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <h3 className="stat-value" style={{ fontSize: "1rem" }}>
+                        {new Date(upcomingAppt.preferredDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<br/>
+                        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>{upcomingAppt.preferredTime}</span>
+                      </h3>
+                      <span className={`status-badge status-${upcomingAppt.status.toLowerCase()}`} style={{ fontSize: "10px", padding: "2px 6px", alignSelf: "flex-start" }}>
+                        {upcomingAppt.status}
+                      </span>
+                    </div>
+                  ) : (
+                    <h3 className="stat-value" style={{ fontSize: "1rem", color: "#64748b" }}>No upcoming donation</h3>
+                  );
+                })()}
+              </div>
             </div>
           </section>
         </>
@@ -452,6 +766,11 @@ const DonorDashboard = ({ userName, initialTab = 'dashboard' }) => {
 
   switch (activeTab) {
     case 'dashboard': return renderDashboard();
+    case 'alerts': return (
+      <div className="dashboard-overview animate-fade-in">
+        {renderEmergencyAlertsSection()}
+      </div>
+    );
     case 'profile': return renderProfile();
     case 'donations': return renderDonations();
     case 'schedule': return renderSchedule();

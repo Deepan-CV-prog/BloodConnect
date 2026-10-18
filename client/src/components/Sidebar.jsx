@@ -11,7 +11,8 @@ import {
   Droplet,
   Hospital,
   Search,
-  Activity
+  Activity,
+  Bell
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, onLogout, role }) => {
@@ -19,6 +20,7 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout, role }) => {
   if (role === "donor") {
     tabs = [
       { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+      { id: "alerts", label: "Emergency Alerts", icon: <Bell size={20} /> },
       { id: "profile", label: "My Profile", icon: <User size={20} /> },
       { id: "my-donations", label: "My Donations", icon: <HeartHandshake size={20} /> },
       { id: "schedule", label: "Donation Schedule", icon: <Calendar size={20} /> },

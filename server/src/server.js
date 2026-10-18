@@ -14,6 +14,7 @@ const allocationRoutes = require("./routes/allocationRoutes");
 const issuanceRoutes = require("./routes/issuanceRoutes");
 const donationAppointmentRoutes = require("./routes/donationAppointmentRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const donorAlertRoutes = require("./routes/donorAlertRoutes");
 require("dotenv").config();
 
 // Attempt to configure DNS servers for environments with SRV resolution limitations
@@ -95,6 +96,7 @@ app.use("/api/allocations", allocationRoutes);
 app.use("/api/issuances", issuanceRoutes);
 app.use("/api/donation-appointments", donationAppointmentRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/donor-alerts", donorAlertRoutes);
 
 // Health check endpoint for cloud monitoring & Render health checks
 app.get("/api/health", (req, res) => {

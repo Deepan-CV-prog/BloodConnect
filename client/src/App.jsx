@@ -212,6 +212,7 @@ function App() {
     if (userRole === "donor") {
       switch (activeTab) {
         case "dashboard": return <DonorDashboard userName={userName} />;
+        case "alerts": return <DonorDashboard userName={userName} initialTab="alerts" />;
         case "profile": return <DonorDashboard userName={userName} initialTab="profile" />;
         case "my-donations": return <DonorDashboard userName={userName} initialTab="donations" />;
         case "schedule": return <DonorDashboard userName={userName} initialTab="schedule" />;
