@@ -1,5 +1,6 @@
 const BloodRequest = require("../models/BloodRequest");
 const Hospital = require("../models/Hospital");
+const Allocation = require("../models/Allocation");
 
 
 // Create a blood request
@@ -99,15 +100,22 @@ const getMyBloodRequests = async (req, res) => {
 // Get all blood requests for staff/admin
 const getAllBloodRequests = async (req, res) => {
     try {
-        const requests = await BloodRequest.find()
+        const requestsRaw = await BloodRequest.find()
             .populate(
                 "hospitalId",
                 "name contactPerson phone email location"
             )
             .sort({
-                priority: -1,
                 createdAt: -1
             });
+
+        // Ensure emergency priority requests are ranked first, followed by newest
+        const requests = requestsRaw.sort((a, b) => {
+            const pA = a.priority === "emergency" ? 0 : 1;
+            const pB = b.priority === "emergency" ? 0 : 1;
+            if (pA !== pB) return pA - pB;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
 
         res.status(200).json({
             message: "All blood requests fetched successfully",
@@ -151,12 +159,36 @@ const updateBloodRequestStatus = async (req, res) => {
             });
         }
 
-        bloodRequest.status = status;
+        // Prevent reverting status if units have already been allocated or released
+        const activeAllocs = await Allocation.countDocuments({
+            requestId: bloodRequest._id,
+            status: { $in: ["allocated", "released"] }
+        });
 
+        if (activeAllocs > 0 && ["pending", "rejected", "cancelled"].includes(status)) {
+            return res.status(400).json({
+                message: `Cannot revert request to '${status}': ${activeAllocs} unit(s) are already allocated or released.`
+            });
+        }
+
+        bloodRequest.status = status;
         await bloodRequest.save();
 
+        const io = req.app.get("io");
+        if (io) {
+            io.emit("bloodRequestStatusUpdated", {
+                requestId: bloodRequest._id,
+                status: bloodRequest.status
+            });
+            io.emit("requestUpdated");
+        }
+
+        const followUpMessage = status === "approved"
+            ? "Blood request approved. Next step: allocate inventory units."
+            : `Blood request status updated to ${status}.`;
+
         res.status(200).json({
-            message: "Blood request status updated successfully",
+            message: followUpMessage,
             bloodRequest
         });
 

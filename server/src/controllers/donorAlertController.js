@@ -16,11 +16,12 @@ const findMatchingDonors = async (req, res) => {
             return res.status(404).json({ message: "Hospital blood request not found" });
         }
 
-        // Count available suitable inventory (tested passed & available)
+        // Count available suitable inventory (tested approved, available, unexpired)
         const availableInventory = await BloodUnit.countDocuments({
             bloodGroup: request.bloodGroup,
-            testingStatus: "passed",
-            inventoryStatus: "available"
+            testingStatus: "approved",
+            inventoryStatus: "available",
+            expiryDate: { $gt: new Date() }
         });
 
         // Find all registered donors matching the requested blood group

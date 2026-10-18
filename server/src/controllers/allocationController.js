@@ -68,15 +68,40 @@ const createAllocation = async (req, res) => {
             });
         }
 
+        // Check unit expiration
+        if (bloodUnit.expiryDate && new Date(bloodUnit.expiryDate) <= new Date()) {
+            return res.status(400).json({
+                message: "Cannot allocate blood unit: Unit has expired"
+            });
+        }
+
         // Prevent double allocation
         const existingAllocation = await Allocation.findOne({
-            unitId,
-            status: "allocated"
+            unitId: bloodUnit._id,
+            status: { $in: ["allocated", "released"] }
         });
 
         if (existingAllocation) {
             return res.status(400).json({
-                message: "Blood unit is already allocated"
+                message: "Blood unit is already allocated or released"
+            });
+        }
+
+        // Atomically reserve the unit to prevent race conditions / overselling
+        const updatedUnit = await BloodUnit.findOneAndUpdate(
+            {
+                _id: bloodUnit._id,
+                inventoryStatus: "available",
+                testingStatus: "approved",
+                expiryDate: { $gt: new Date() }
+            },
+            { $set: { inventoryStatus: "allocated" } },
+            { new: true }
+        );
+
+        if (!updatedUnit) {
+            return res.status(400).json({
+                message: "Blood unit is no longer available for allocation"
             });
         }
 
@@ -89,14 +114,11 @@ const createAllocation = async (req, res) => {
         const allocation = await Allocation.create({
             allocationId,
             requestId,
-            unitId,
+            unitId: bloodUnit._id,
             allocatedBy: req.user.id,
             remarks: remarks || ""
         });
 
-        // Update blood unit
-        bloodUnit.inventoryStatus = "allocated";
-        await bloodUnit.save();
         const io = req.app.get("io");
 
         if (io) {
@@ -142,6 +164,14 @@ const createAllocation = async (req, res) => {
         }
 
         await bloodRequest.save();
+
+        if (io) {
+            io.emit("bloodRequestStatusUpdated", {
+                requestId: bloodRequest._id,
+                status: bloodRequest.status
+            });
+            io.emit("requestUpdated");
+        }
 
         res.status(201).json({
             message: "Blood unit allocated successfully",

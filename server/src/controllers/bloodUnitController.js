@@ -148,11 +148,13 @@ const updateTestingStatus = async (req, res) => {
 };
 const getInventory = async (req, res) => {
     try {
+        const now = new Date();
         const inventory = await BloodUnit.aggregate([
             {
                 $match: {
                     testingStatus: "approved",
-                    inventoryStatus: "available"
+                    inventoryStatus: "available",
+                    expiryDate: { $gt: now }
                 }
             },
             {
@@ -196,7 +198,8 @@ const getAvailableBloodUnits = async (req, res) => {
     try {
         const query = {
             testingStatus: "approved",
-            inventoryStatus: "available"
+            inventoryStatus: "available",
+            expiryDate: { $gt: new Date() }
         };
 
         if (req.query.bloodGroup) {

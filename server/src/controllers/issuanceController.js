@@ -125,6 +125,15 @@ const createIssuance = async (req, res) => {
                 bloodRequest.status = "approved";
             }
             await bloodRequest.save();
+
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("bloodRequestStatusUpdated", {
+                    requestId: bloodRequest._id,
+                    status: bloodRequest.status
+                });
+                io.emit("requestUpdated");
+            }
         }
 
         // Create traceability record

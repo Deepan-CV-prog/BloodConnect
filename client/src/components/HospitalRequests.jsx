@@ -11,12 +11,16 @@ import {
   ShieldCheck,
   X,
   AlertCircle,
-  Check
+  Check,
+  PackageCheck,
+  ArrowRight
 } from 'lucide-react';
 
 const HospitalRequests = ({ requests, loading, onRefresh }) => {
   const [updatingId, setUpdatingId] = useState(null);
   const [allocationCounts, setAllocationCounts] = useState({});
+  const [inventoryStock, setInventoryStock] = useState({});
+  const [statusFeedback, setStatusFeedback] = useState(null);
 
   // Allocation Modal State
   const [allocatingRequest, setAllocatingRequest] = useState(null);
@@ -57,13 +61,37 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
       date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
+  const fetchInventoryStock = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/blood-units/inventory`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.inventory) {
+          setInventoryStock(data.inventory);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch inventory stock", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventoryStock();
+  }, []);
+
   useEffect(() => {
     const fetchCounts = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const relevantRequests = requests.filter(r => r.status === 'partially_allocated' || r.status === 'allocated' || r.status === 'processing');
+        const relevantRequests = requests.filter(r =>
+          ['approved', 'partially_allocated', 'allocated', 'processing', 'completed'].includes(r.status)
+        );
         if (relevantRequests.length === 0) return;
 
         const counts = {};
@@ -74,8 +102,14 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
             });
             if (res.ok) {
               const data = await res.json();
-              const pendingCount = (data.allocations || []).filter(a => a.status === 'allocated').length;
-              counts[req._id] = pendingCount;
+              const allocs = data.allocations || [];
+              const pendingCount = allocs.filter(a => a.status === 'allocated').length;
+              const releasedCount = allocs.filter(a => a.status === 'released').length;
+              counts[req._id] = {
+                allocated: pendingCount,
+                released: releasedCount,
+                totalAssigned: pendingCount + releasedCount
+              };
             }
           } catch (e) {
             console.error(`Failed to fetch allocations for ${req._id}`, e);
@@ -91,7 +125,7 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
     fetchCounts();
   }, [requests]);
 
-  // Real-time listener for donor responses while alert modal is open
+  // Real-time listener for donor responses, inventory, and request updates
   useEffect(() => {
     const socket = io(SOCKET_URL);
 
@@ -101,11 +135,21 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
       }
     });
 
+    socket.on("inventoryUpdated", () => {
+      fetchInventoryStock();
+    });
+
+    socket.on("bloodRequestStatusUpdated", () => {
+      if (onRefresh) onRefresh();
+    });
+
     return () => socket.disconnect();
-  }, [alertModalRequest]);
+  }, [alertModalRequest, onRefresh]);
 
   const handleStatusChange = async (requestId, newStatus) => {
+    const targetRequest = requests.find(r => r._id === requestId);
     setUpdatingId(requestId);
+    setStatusFeedback(null);
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_BASE_URL}/api/blood-requests/${requestId}/status`, {
@@ -117,14 +161,31 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
         body: JSON.stringify({ status: newStatus }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
+        const updatedReq = { ...(targetRequest || {}), status: newStatus };
+        setStatusFeedback({
+          id: requestId,
+          type: 'success',
+          message: data.message || `Request ${targetRequest?.requestId || ''} updated to ${newStatus}.`,
+          request: updatedReq,
+          showAllocateAction: newStatus === 'approved'
+        });
         if (onRefresh) onRefresh();
       } else {
-        const data = await response.json();
-        alert(data.message || 'Failed to update status');
+        setStatusFeedback({
+          id: requestId,
+          type: 'error',
+          message: data.message || 'Failed to update request status'
+        });
       }
     } catch (error) {
-      alert('Error updating status');
+      setStatusFeedback({
+        id: requestId,
+        type: 'error',
+        message: 'Error updating request status: ' + error.message
+      });
     } finally {
       setUpdatingId(null);
     }
@@ -173,7 +234,15 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
       });
 
       if (response.ok) {
+        const data = await response.json();
         setAllocatingRequest(null);
+        setStatusFeedback({
+          id: allocatingRequest._id,
+          type: 'success',
+          message: data.message || `Blood unit successfully allocated to request ${allocatingRequest.requestId || ''}.`,
+          request: { ...allocatingRequest, status: data.requestStatus || 'partially_allocated' }
+        });
+        fetchInventoryStock();
         if (onRefresh) onRefresh();
       } else {
         const data = await response.json();
@@ -350,6 +419,81 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
         </div>
       </div>
 
+      {statusFeedback && (
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            backgroundColor: statusFeedback.type === 'success' ? '#eff6ff' : '#fef2f2',
+            border: `1px solid ${statusFeedback.type === 'success' ? '#bfdbfe' : '#fecaca'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {statusFeedback.type === 'success' ? (
+              <CheckCircle size={18} color="#2563eb" style={{ flexShrink: 0 }} />
+            ) : (
+              <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+            )}
+            <div>
+              <span style={{
+                fontSize: '13.5px',
+                fontWeight: '500',
+                color: statusFeedback.type === 'success' ? '#1e40af' : '#991b1b'
+              }}>
+                {statusFeedback.message}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {statusFeedback.showAllocateAction && statusFeedback.request && (
+              <button
+                onClick={() => {
+                  handleOpenAllocate(statusFeedback.request);
+                  setStatusFeedback(null);
+                }}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <PackageCheck size={14} />
+                <span>Allocate Units Now</span>
+              </button>
+            )}
+            <button
+              onClick={() => setStatusFeedback(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px'
+              }}
+              title="Dismiss"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="table-responsive">
         <table className="modern-table">
           <thead>
@@ -371,6 +515,9 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
             ) : (
               requests.map((request) => {
                 const isEmergency = request.priority === "emergency";
+                const reqCounts = allocationCounts[request._id] || { allocated: 0, released: 0, totalAssigned: 0 };
+                const availableStock = inventoryStock[request.bloodGroup] ?? 0;
+
                 return (
                   <tr
                     key={request._id}
@@ -380,11 +527,30 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
                     <td className="fw-medium">
                       {isEmergency && <span style={{ marginRight: '8px' }}>🚨</span>}
                       {request.hospitalId?.name || "Unknown Hospital"}
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        #{request.requestId || request._id.substring(0, 8)}
+                      </div>
                     </td>
                     <td>
-                      <span className="blood-pill-small">{request.bloodGroup}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="blood-pill-small">{request.bloodGroup}</span>
+                        <span style={{
+                          fontSize: '11px',
+                          color: availableStock >= request.quantity ? '#15803d' : (availableStock > 0 ? '#b45309' : '#dc2626'),
+                          fontWeight: '600'
+                        }}>
+                          ({availableStock} in stock)
+                        </span>
+                      </div>
                     </td>
-                    <td>{request.quantity} Units</td>
+                    <td>
+                      <div style={{ fontWeight: '500' }}>{request.quantity} Units</div>
+                      {['approved', 'partially_allocated', 'allocated', 'completed'].includes(request.status) && (
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          Allocated: <strong>{reqCounts.totalAssigned || 0} / {request.quantity}</strong>
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <span className={`priority-badge ${isEmergency ? "emergency" : "normal"}`}>
                         {request.priority}
@@ -395,7 +561,7 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
                     </td>
                     <td>
                       <span className={`status-badge ${request.status?.toLowerCase() || 'pending'}`}>
-                        {request.status || 'Pending'}
+                        {request.status?.replace('_', ' ') || 'Pending'}
                       </span>
                     </td>
                     <td style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -442,21 +608,50 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
                       {(request.status === 'approved' || request.status === 'partially_allocated') && (
                         <button
                           onClick={() => handleOpenAllocate(request)}
-                          style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            backgroundColor: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 1px 2px 0 rgba(37, 99, 235, 0.2)'
+                          }}
+                          title="Allocate blood units from inventory"
                         >
-                          Allocate
+                          <PackageCheck size={14} />
+                          <span>Allocate</span>
                         </button>
                       )}
 
                       {(
                         request.status === 'allocated' ||
-                        (['partially_allocated', 'processing'].includes(request.status) && allocationCounts[request._id] > 0)
+                        (['partially_allocated', 'processing'].includes(request.status) && reqCounts.allocated > 0)
                       ) && (
                         <button
                           onClick={() => handleOpenIssue(request)}
-                          style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Issue allocated units"
                         >
-                          Issue Units
+                          <ArrowRight size={14} />
+                          <span>Issue Units ({reqCounts.allocated})</span>
                         </button>
                       )}
                     </td>
@@ -771,24 +966,28 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
               </div>
             )}
 
-            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
-              Request ID: {allocatingRequest.requestId || allocatingRequest._id}<br/>
-              Group: <strong>{allocatingRequest.bloodGroup}</strong><br/>
-              Requested: {allocatingRequest.quantity} units
-            </p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '16px', fontSize: '13px', lineHeight: '1.6', color: '#475569' }}>
+              <div>Request: <strong>{allocatingRequest.requestId || allocatingRequest._id}</strong> ({allocatingRequest.hospitalId?.name || "Hospital"})</div>
+              <div>Blood Group: <strong style={{ color: '#dc2626' }}>{allocatingRequest.bloodGroup}</strong> • Requested: <strong>{allocatingRequest.quantity} units</strong></div>
+              <div>Allocated So Far: <strong>{allocationCounts[allocatingRequest._id]?.totalAssigned || 0} / {allocatingRequest.quantity} units</strong></div>
+            </div>
 
             <form onSubmit={submitAllocation} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#64748b' }}>Select Available Unit</label>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', fontWeight: '500', color: '#334155' }}>
+                  Select Tested & Approved Unit (FIFO - Oldest Expiry First)
+                </label>
                 <select
                   style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                   value={allocUnitId}
                   onChange={e => setAllocUnitId(e.target.value)}
                   required
                 >
-                  {availableUnits.length === 0 && <option value="">No available units for {allocatingRequest.bloodGroup}</option>}
+                  {availableUnits.length === 0 && <option value="">No tested/available {allocatingRequest.bloodGroup} units in inventory</option>}
                   {availableUnits.map(unit => (
-                    <option key={unit._id} value={unit._id}>{unit.unitId} (Exp: {formatDate(unit.expiryDate)})</option>
+                    <option key={unit._id} value={unit._id}>
+                      {unit.unitId} • Exp: {formatDate(unit.expiryDate)} • {unit.currentLocation || 'Blood Bank'}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -803,8 +1002,13 @@ const HospitalRequests = ({ requests, loading, onRefresh }) => {
                 />
               </div>
 
-              <button type="submit" className="btn-primary" disabled={allocLoading || availableUnits.length === 0} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
-                {allocLoading ? 'Allocating...' : 'Confirm Allocation'}
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={allocLoading || availableUnits.length === 0}
+                style={{ width: '100%', justifyContent: 'center', marginTop: '8px', backgroundColor: '#2563eb' }}
+              >
+                {allocLoading ? 'Allocating Blood Unit...' : 'Confirm Allocation (Reserve Unit)'}
               </button>
             </form>
           </div>

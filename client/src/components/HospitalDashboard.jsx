@@ -94,7 +94,7 @@ const HospitalDashboard = ({ requests, onRefresh, initialTab = 'dashboard' }) =>
   };
 
   // Derive stats
-  const activeRequests = requests.filter(r => ['pending', 'processing', 'partially_allocated', 'allocated'].includes(r.status));
+  const activeRequests = requests.filter(r => ['pending', 'approved', 'processing', 'partially_allocated', 'allocated'].includes(r.status));
   const pendingRequests = requests.filter(r => r.status === 'pending');
   const completedRequests = requests.filter(r => r.status === 'completed');
   const approvedRequests = requests.filter(r => r.status === 'approved' || r.status === 'processing');
